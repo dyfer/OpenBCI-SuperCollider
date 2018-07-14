@@ -14,88 +14,88 @@ Cyton : OpenBCI {
 
 	//--commands
 	testGnd {  //Connect to internal GND (VDD - VSS)
-		port.put($0);
+		this.put($0);
 	}
 	test1AmpSlow {  //Connect to test signal 1xAmplitude, slow pulse
-		port.put($-);
+		this.put($-);
 	}
 	test1AmpFast {  //Connect to test signal 1xAmplitude, fast pulse
-		port.put($=);
+		this.put($=);
 	}
 	testDC {  //Connect to DC signal
-		port.put($p);
+		this.put($p);
 	}
 	test2AmpSlow {  //Connect to test signal 2xAmplitude, slow pulse
-		port.put($[);
+		this.put($[);
 	}
 	test2AmpFast {  //Connect to test signal 2xAmplitude, fast pulse
-		port.put($]);
+		this.put($]);
 	}
 
 	settings {|channel= 1, powerDown= 0, gain= 6, type= 0, bias= 1, srb2= 1, srb1= 0|
 		if(channel>=1 and:{channel<=8}, {
-			port.put($x);
-			port.put(channel.asDigit);
-			port.put(powerDown.clip(0, 1).asDigit);
-			port.put(gain.clip(0, 6).asDigit);
-			port.put(type.clip(0, 7).asDigit);
-			port.put(bias.clip(0, 1).asDigit);
-			port.put(srb2.clip(0, 1).asDigit);
-			port.put(srb1.clip(0, 1).asDigit);
-			port.put($X);
+			this.put($x);
+			this.put(channel.asDigit);
+			this.put(powerDown.clip(0, 1).asDigit);
+			this.put(gain.clip(0, 6).asDigit);
+			this.put(type.clip(0, 7).asDigit);
+			this.put(bias.clip(0, 1).asDigit);
+			this.put(srb2.clip(0, 1).asDigit);
+			this.put(srb1.clip(0, 1).asDigit);
+			this.put($X);
 		}, {
 			"channel % out of range".format(channel).warn;
 		});
 	}
 	setDefaultChannelSettings {  //set all channels to default
-		port.put($d);
+		this.put($d);
 	}
 	getDefaultChannelSettings {  //get a report
-		port.put($D);
+		this.put($D);
 	}
 	impedance {|channel= 1, pchan= 0, nchan= 0|
 		if(channel>=1 and:{channel<=8}, {
-			port.put($z);
-			port.put(channel.asDigit);
-			port.put(pchan.clip(0, 1).asDigit);
-			port.put(nchan.clip(0, 1).asDigit);
-			port.put($Z);
+			this.put($z);
+			this.put(channel.asDigit);
+			this.put(pchan.clip(0, 1).asDigit);
+			this.put(nchan.clip(0, 1).asDigit);
+			this.put($Z);
 		}, {
 			"channel % out of range".format(channel).warn;
 		});
 	}
 
 	timeStampingON {
-		port.put($<);
+		this.put($<);
 	}
 	timeStampingOFF {
-		port.put($>);
+		this.put($>);
 	}
 	getRadioChannel {  //Get Radio Channel Number
-		port.putAll(Int8Array[0xF0, 0x00]);
+		this.putAll(Int8Array[0xF0, 0x00]);
 	}
 	setRadioChannel {|channel= 7|  //Set Radio System Channel Number
-		port.putAll(Int8Array[0xF0, 0x01, channel.clip(1, 25)]);
+		this.putAll(Int8Array[0xF0, 0x01, channel.clip(1, 25)]);
 	}
 	setRadioHostChannel {|channel= 7, really= false|  //Set Host Radio Channel Override
 		if(really, {  //extra safety
-			port.putAll(Int8Array[0xF0, 0x02, channel.clip(1, 25)]);
+			this.putAll(Int8Array[0xF0, 0x02, channel.clip(1, 25)]);
 		}, {
 			"changing might break the wireless connection. really=true to override".warn;
 		});
 	}
 	getRadioPollTime {  //Radio Get Poll Time
-		port.putAll(Int8Array[0xF0, 0x03]);
+		this.putAll(Int8Array[0xF0, 0x03]);
 	}
 	setRadioPollTime {|time= 80|  //Radio Set Poll Time
-		port.putAll(Int8Array[0xF0, 0x04, time.clip(0, 255)]);
+		this.putAll(Int8Array[0xF0, 0x04, time.clip(0, 255)]);
 	}
 	setRadioHostBaudRate {|rate= 0, really= false|  //Radio Set HOST to Driver Baud Rate
 		if(really, {  //extra safety
 			switch(rate,
-				0, {port.putAll(Int8Array[0xF0, 0x05])},  //Default - 115200
-				1, {port.putAll(Int8Array[0xF0, 0x06])},  //High-Speed - 230400
-				2, {port.putAll(Int8Array[0xF0, 0x0A])},  //Hyper-Speed - 921600
+				0, {this.putAll(Int8Array[0xF0, 0x05])},  //Default - 115200
+				1, {this.putAll(Int8Array[0xF0, 0x06])},  //High-Speed - 230400
+				2, {this.putAll(Int8Array[0xF0, 0x0A])},  //Hyper-Speed - 921600
 				{"rate % not recognised".format(rate).warn}
 			);
 		}, {
@@ -103,26 +103,47 @@ Cyton : OpenBCI {
 		});
 	}
 	getRadioSystemStatus {  //Radio System Status
-		port.putAll(Int8Array[0xF0, 0x07]);
+		this.putAll(Int8Array[0xF0, 0x07]);
 	}
 	getSampleRate {  //get current sample rate
-		port.putAll("~~");
+		this.putAll("~~");
 	}
 	setSampleRate {|rate= 6|  //set sample rate
-		port.putAll("~"++rate.clip(0, 6));
-		if(rate<6, {
-			"The Cyton with USB Dongle cannot and will not stream data over 250SPS".warn;
-		});
+		this.putAll("~"++rate.clip(0, 6));
+		if(wifi, {
+			if((rate<4), {
+				"The Cyton with WiFi shield cannot stream data over 1000SPS".warn;
+			});
+		}, {
+			if((rate<6), {
+				"The Cyton with USB Dongle cannot and will not stream data over 250SPS".warn;
+			});
+		})
 	}
+	setSampleRateHz {|rate= 250|  //set sample rate
+		var rateInt;
+		rate.switch(
+			250, {rateInt = 6},
+			500, {rateInt = 5},
+			1000, {rateInt = 4},
+			2000, {rateInt = 3},
+			4000, {rateInt = 2},
+			8000, {rateInt = 1},
+			16000, {rateInt = 0},
+			{"Invalid sample rate. The valid rates (Hz) are 250, 500, 1000, 2000, 4000, 8000, 16000".warn}
+		);
+		rateInt !? {this.setSampleRate(rateInt)};
+	}
+
 	getBoardMode {  //get current board mode
-		port.putAll("//");
+		this.putAll("//");
 	}
 	setBoardMode {|mode= 0|  //set board mode
-		port.putAll("/"++mode.clip(0, 4));
+		this.putAll("/"++mode.clip(0, 4));
 	}
 
 	getVersion {  //get firmware version
-		port.put($V);
+		this.put($V);
 	}
 
 	//--private
@@ -209,33 +230,33 @@ CytonDaisy : Cyton {
 	classvar <numChannels= 16;
 	settings {|channel= 1, powerDown= 0, gain= 6, type= 0, bias= 1, srb2= 1, srb1= 0|
 		if(channel>=1 and:{channel<=16}, {
-			port.put($x);
+			this.put($x);
 			switch(channel,
-				9, {port.put($Q)},
-				10, {port.put($W)},
-				11, {port.put($E)},
-				12, {port.put($R)},
-				13, {port.put($T)},
-				14, {port.put($Y)},
-				15, {port.put($U)},
-				16, {port.put($I)},
-				{port.put(channel.asDigit)}
+				9, {this.put($Q)},
+				10, {this.put($W)},
+				11, {this.put($E)},
+				12, {this.put($R)},
+				13, {this.put($T)},
+				14, {this.put($Y)},
+				15, {this.put($U)},
+				16, {this.put($I)},
+				{this.put(channel.asDigit)}
 			);
-			port.put(powerDown.clip(0, 1).asDigit);
-			port.put(gain.clip(0, 6).asDigit);
-			port.put(type.clip(0, 7).asDigit);
-			port.put(bias.clip(0, 1).asDigit);
-			port.put(srb2.clip(0, 1).asDigit);
-			port.put(srb1.clip(0, 1).asDigit);
-			port.put($X);
+			this.put(powerDown.clip(0, 1).asDigit);
+			this.put(gain.clip(0, 6).asDigit);
+			this.put(type.clip(0, 7).asDigit);
+			this.put(bias.clip(0, 1).asDigit);
+			this.put(srb2.clip(0, 1).asDigit);
+			this.put(srb1.clip(0, 1).asDigit);
+			this.put($X);
 		}, {
 			"channel % out of range".format(channel).warn;
 		});
 	}
 	maximumChannelNumber {|channels= 16|
 		switch(channels,
-			8, {port.put($c)},
-			16, {port.put($C)},
+			8, {this.put($c)},
+			16, {this.put($C)},
 			{"channels can only be 8 or 16".warn}
 		);
 	}
