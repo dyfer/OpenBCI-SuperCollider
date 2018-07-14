@@ -101,14 +101,19 @@ OpenBCI.startDiscovery
 OpenBCI.stopDiscovery
 
 OpenBCI.allIPs.keys
+OpenBCI.runInTerminal = false
+OpenBCI.runInTerminal = true
 
 b = Cyton.wifi('OpenBCI-5381', {|da|"1: ".post; da.round(0.001).postln})
 c = Cyton.wifi('OpenBCI-8435', {|da|"2: ".post; da.round(0.001).postln})
 b.dataAction={}
 b.dataAction={|da|da.postln}
 b.pythonPort
+b.isConnected //status
 b.connect
+b.stop
 b.start
+b.start(Bus.new(\control, 0, 12, s))
 
 c.connect
 c.start
@@ -124,5 +129,18 @@ b.put($d.asString)
 b.put("d")
 b.setSampleRate(4)
 b.setSampleRateHz(249)
+s.boot
+s.addr.port
+b.sendMsg('/start_streaming', s.addr.ip, s.addr.port, '/c_setn', 0)
+s.scope(12, 0, rate: \control)
 
+Bus.new(\control, 0, 12, s).getnSynchronous
+
+Bus.new(\control, 0, 20, s).index
+Buffer.new(s, 1, 12, 2).bufnum
+
+
+f = FreqScope2(Bus.new(\control, 3, 8, s), 512, ampdb: false)
+
+f.scope.synth.set(\inMul, 1000)
 

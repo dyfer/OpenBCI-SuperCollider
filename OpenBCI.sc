@@ -11,7 +11,7 @@ OpenBCI {
 	var <>data, <>accel;  //latest readings (can be nil)
 	var <name, <ip, <responders, <pid, <cmd, <pythonNetAddr;
 	var <wifi=false, <pythonPort, <thisOscPrefix, <thisOscPath;
-	var <connected = false;
+	var <isConnected = false, <isStreaming = false;
 
 	classvar <allIPs, <pythonPath = "python3", <pythonFound = false;
 	classvar <>globalOscPrefix = "";
@@ -157,10 +157,15 @@ OpenBCI {
 				pythonNetAddr = NetAddr("localhost", pythonPort)
 			}, thisOscPath ++ '/receivePort');
 			OSCFunc({|msg|
-				connected = msg[1].asBoolean;
-				this.changed(\connected, connected);
-				format("OpenBCI WiFi: % is %", name, connected.if({"connected"}, {"disconnected"})).postln;
+				isConnected = msg[1].asBoolean;
+				this.changed(\connected, isConnected);
+				format("% is %", name, isConnected.if({"connected"}, {"disconnected"})).postln;
 			}, thisOscPath ++ '/connected');
+			OSCFunc({|msg|
+				isStreaming = msg[1].asBoolean;
+				this.changed(\streaming, isStreaming);
+				format("%: streaming %", name, isStreaming.if({"started"}, {"stopped"})).postln;
+			}, thisOscPath ++ '/streaming');
 			OSCFunc({|msg| dataAction.(msg[1..])}, thisOscPath);
 		]
 	}
@@ -296,7 +301,7 @@ OpenBCI {
 
 	start { |bufferOrBus| //start streaming data; optionally set server bus or buffer directly; make sure the bus has the proper number of channels! (counter + eeg_channels (4/8/16) + accelerometer (3)
 		if(wifi, {
-			if(connected, {
+			if(isConnected, {
 				if(bufferOrBus.isNil, {
 					this.sendMsg('/start_streaming'); //standard streaming
 				}, {
