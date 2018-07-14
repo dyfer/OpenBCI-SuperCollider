@@ -15,7 +15,7 @@ OpenBCI {
 
 	classvar <allIPs, <pythonPath = "python3", <pythonFound = false;
 	classvar <>globalOscPrefix = "";
-	classvar <>runInTerminal = true; //for testing, macOS only
+	classvar <>runInTerminal = false; //for testing, macOS only
 	// classvar <scriptPath = "/Volumes/data/Dokumenty/src/brain/OpenBCI_Python/scripts/openbci_wifi_osc.py";
 	classvar <scriptPath;
 	classvar <discoveryPid, <>discoveryAddr = '/obci/discovery', <discoveryResp;
@@ -152,8 +152,15 @@ OpenBCI {
 	startResponders {
 		this.freeResponders;
 		responders = [
-			OSCFunc({|msg| pythonPort = msg[1]; pythonNetAddr = NetAddr("localhost", pythonPort)}, thisOscPath ++ '/receivePort');
-			OSCFunc({|msg| connected = msg[1].asBoolean}, thisOscPath ++ '/connected');
+			OSCFunc({|msg|
+				pythonPort = msg[1];
+				pythonNetAddr = NetAddr("localhost", pythonPort)
+			}, thisOscPath ++ '/receivePort');
+			OSCFunc({|msg|
+				connected = msg[1].asBoolean;
+				this.changed(\connected, connected);
+				format("OpenBCI WiFi: % is %", name, connected.if({"connected"}, {"disconnected"})).postln;
+			}, thisOscPath ++ '/connected');
 			OSCFunc({|msg| dataAction.(msg[1..])}, thisOscPath);
 		]
 	}
@@ -281,6 +288,7 @@ OpenBCI {
 		if(wifi, {
 			ip = argIP ? this.getIPfromName(name);
 			this.sendMsg('/connect', ip ? name);
+			format("connecting to %...", name).postln;
 		}, {
 			".connect method is used only in wifi mode!".warn;
 		})

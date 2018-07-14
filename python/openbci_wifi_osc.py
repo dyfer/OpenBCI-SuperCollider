@@ -1,5 +1,5 @@
-import sys;
-sys.path.append('.')
+import sys, os;
+sys.path.append(os.path.join(os.path.dirname(__file__), 'OpenBCI_Python'))
 from signal import *
 import os
 
@@ -169,6 +169,7 @@ if __name__ == '__main__':
             obci_wifi.start_streaming(stream_scsynth)
             # use different callback with additional parameters?
             pass # for now
+        osc_sender_main.send_message(args.address + "/streaming", obci_wifi.streaming) # status
 
     def stop_streaming(addr):
         global obci_wifi
@@ -179,6 +180,7 @@ if __name__ == '__main__':
         except:
             print("stopping failed?")
             pass
+        osc_sender_main.send_message(args.address + "/streaming", obci_wifi.streaming) # status
         # obci_wifi = None # we don't do this anymore, as we can restart streaming now
         # print("obci_wifi after stop:", obci_wifi)
 
