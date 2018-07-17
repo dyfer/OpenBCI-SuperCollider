@@ -11,6 +11,7 @@ OpenBCI {
 	var <>data, <>accel;  //latest readings (can be nil)
 	var <name, <ip, <responders, <pid, <cmd, <pythonNetAddr;
 	var <wifi=false, <pythonPort, <thisOscPrefix, <thisOscPath;
+	var msgList;
 	var <isConnected = false, <isStreaming = false;
 
 	classvar <allIPs, <pythonPath = "python3", <pythonFound = false;
@@ -111,6 +112,7 @@ OpenBCI {
 
 	initOpenBCIwifi {|argName, argDataAction, argReplyAction, argInitAction|
 		wifi = true;
+		msgList = List();
 		if(pythonFound.not, {this.findPython});
 		name = argName;
 
@@ -136,7 +138,7 @@ OpenBCI {
 	startPython {
 		this.startResponders;
 		cmd = pythonPath + scriptPath + "--host localhost" + "--port" + NetAddr.langPort + "--address" + thisOscPath;
-		"cmd: ".post; cmd.postln;
+		// "cmd: ".post; cmd.postln;
 		if(runInTerminal, {
 			try {
 				cmd.runInTerminal;
@@ -154,24 +156,32 @@ OpenBCI {
 		responders = [
 			OSCFunc({|msg|
 				pythonPort = msg[1];
-				pythonNetAddr = NetAddr("localhost", pythonPort)
-			}, thisOscPath ++ '/receivePort');
+				pythonNetAddr = NetAddr("localhost", pythonPort);
+				//process list
+				if(msgList.size > 0, {
+					msgList.size.do({this.sendMsg(*msgList.pop)});
+				});
+			}, thisOscPath ++ '/receivePort'),
+
 			OSCFunc({|msg|
 				isConnected = msg[1].asBoolean;
 				this.changed(\connected, isConnected);
 				format("% is %", name, isConnected.if({"connected"}, {"disconnected"})).postln;
-			}, thisOscPath ++ '/connected');
+			}, thisOscPath ++ '/connected'),
+
 			OSCFunc({|msg|
 				isStreaming = msg[1].asBoolean;
 				this.changed(\streaming, isStreaming);
 				format("%: streaming %", name, isStreaming.if({"started"}, {"stopped"})).postln;
-			}, thisOscPath ++ '/streaming');
-			OSCFunc({|msg| dataAction.(msg[1..])}, thisOscPath);
+			}, thisOscPath ++ '/streaming'),
+
+			OSCFunc({|msg| dataAction.(msg[1..])}, thisOscPath),
 		]
 	}
 
 	freeResponders {
-		responders.do(_.free);
+		// responders.do(_.free);
+		responders.do({|resp| resp.free});
 		responders = [];
 	}
 
@@ -212,8 +222,9 @@ OpenBCI {
 		if(pythonNetAddr.notNil, {
 			pythonNetAddr.sendMsg(*msgs)
 		}, {
-			"pythonNetAddr not ready".warn;
-			//maybe add message queuing here
+			// "pythonNetAddr not ready".warn;
+			// messages are queued
+			msgList.add(msgs);
 		})
 	}
 
@@ -305,15 +316,17 @@ OpenBCI {
 				if(bufferOrBus.isNil, {
 					this.sendMsg('/start_streaming'); //standard streaming
 				}, {
-					var msg, num;
+					var msg, num, startFrame;
 					if(bufferOrBus.isKindOf(Bus), {
 						num = bufferOrBus.index;
-						msg = '/c_setn'
+						msg = '/c_setn';
+						this.sendMsg('/start_streaming', bufferOrBus.server.addr.ip, bufferOrBus.server.addr.port, msg, num); //direct to scsynth streaming
 					}, {//assume buffer
 						num = bufferOrBus.bufnum;
-						msg = '/b_setn'
+						msg = '/b_setn';
+						startFrame = 0;
+						this.sendMsg('/start_streaming', bufferOrBus.server.addr.ip, bufferOrBus.server.addr.port, msg, num, startFrame); //direct to scsynth streaming
 					});
-					this.sendMsg('/start_streaming', bufferOrBus.server.addr.ip, bufferOrBus.server.addr.port, msg, num); //direct to scsynth streaming
 				});
 			}, {
 				"The board seems not to be connected, not starting".warn;

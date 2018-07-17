@@ -52,8 +52,8 @@ if __name__ == '__main__':
     #globals for synth init_streaming
     osc_sender_synth = None
     osc_synth_addr = ''
-    osc_synth_index = 0
-    osc_synth_num_messages = 0
+    osc_beginning_arr = []
+    prev_accel_data = [0.0, 0.0, 0.0]
 
     # addr will be appended to args.address
     def send_main(addr='', *msg):
@@ -114,8 +114,11 @@ if __name__ == '__main__':
         try:
             obci_wifi = bci.OpenBCIWiFi(ip_address=ip, shield_name=name, sample_rate=sample_rate, log=True, timeout=timeout, max_packets_to_skip=max_packets_to_skip, latency=latency, high_speed=True, ssdp_attempts=attempts, num_channels=8, shield_found_cb=None)
             # num_channels is ignored
-
-            connected = True
+            if obci_wifi.local_wifi_server is None:
+                connected = False
+                obci_wifi = None # prevent main loop
+            else:
+                connected = True
         except:
             connected = False
 
@@ -131,26 +134,39 @@ if __name__ == '__main__':
             osc_sender_main.send_message(args.address, [sample.sample_number] + sample.channel_data)
 
 
-    def prepare_synth_streaming(scHost=None, scPort=None, scMsg='/b_setn', scIndex=0):
+    def prepare_synth_streaming(scHost=None, scPort=None, scMsg='/b_setn', scIndex=0, scFirstFrame=None):
         print("obci_wifi.eeg_channels_per_sample:", obci_wifi.eeg_channels_per_sample)
-        global osc_sender_synth, osc_synth_addr, osc_synth_index, osc_synth_num_messages
+        global osc_sender_synth, osc_synth_addr, osc_beginning_arr
         osc_sender_synth = udp_client.SimpleUDPClient(scHost, scPort)
         osc_synth_addr = scMsg
-        osc_synth_index = scIndex
         osc_synth_num_messages = 1 + obci_wifi.eeg_channels_per_sample + 3 # counter, eeg, accelerometer
+        print("scFirstFrame", scFirstFrame)
+        if scFirstFrame is not None:
+            osc_beginning_arr = [int(scIndex), int(scFirstFrame), int(osc_synth_num_messages)]
+        else:
+            osc_beginning_arr = [int(scIndex), int(osc_synth_num_messages)]
+
 
 
     def stream_scsynth(sample): # be sure to run prepare_synth_streaming first!
         # print("sample.accel_data:", sample.accel_data)
         # print("sample.sample_number:", sample.sample_number)
 
-        if sample.accel_data != [0.0, 0.0, 0.0]: #is this too heavy?
-            osc_sender_synth.send_message(osc_synth_addr, [osc_synth_index, osc_synth_num_messages, sample.sample_number] + sample.channel_data + sample.accel_data)
+        global prev_accel_data
+        try:
+            acc = sample.accel_data
+        except:
+            acc = [0.0, 0.0, 0.0]
+
+        if acc != [0.0, 0.0, 0.0]: #is this too heavy?
+            cur_acc_data = acc
+            prev_accel_data = cur_acc_data
         else:
-            osc_sender_synth.send_message(osc_synth_addr, [osc_synth_index, osc_synth_num_messages, sample.sample_number] + sample.channel_data)
+            cur_acc_data = prev_accel_data
+        osc_sender_synth.send_message(osc_synth_addr, osc_beginning_arr + [float(sample.sample_number)] + sample.channel_data + cur_acc_data)
 
 
-    def start_streaming(addr, scHost=None, scPort=None, scMsg='/b_setn', scIndex=0):
+    def start_streaming(addr, scHost=None, scPort=None, scMsg='/b_setn', scIndex=0, scFirstFrame=None):
         global obci_wifi
         # if obci_wifi is not None:
         #     obci_wifi.connect() # reconnect
@@ -165,7 +181,7 @@ if __name__ == '__main__':
             #     print("obci_wifi loop broke")
         else:
             # setup osc sender
-            prepare_synth_streaming(scHost, scPort, scMsg, scIndex)
+            prepare_synth_streaming(scHost, scPort, scMsg, scIndex, scFirstFrame)
             obci_wifi.start_streaming(stream_scsynth)
             # use different callback with additional parameters?
             pass # for now
@@ -238,6 +254,7 @@ if __name__ == '__main__':
         if obci_wifi is not None:
             try:
                 obci_wifi.loop()
+                # print("looping")
             except Exception as e:
                 print("loop exception")
                 time.sleep(1)
