@@ -32,31 +32,63 @@ NetAddr("localhost", 64676).sendMsg('/quit')
 
 
 
-~recv = OSCdef(\portRec, {|msg| ~port = msg[1]}, '/obci/receivePort');
+// ~recv = OSCdef(\portRec, {|msg| msg.postln;~port = msg[1]}, '/OpenBCI-536D/receivePort');
+~recv = OSCdef(\portRec, {|msg| msg.postln;~port = msg[1]}, '/obci/receivePort');
 ~disc = OSCdef(\disc, {|msg| msg.postln}, '/obci/found');
-
+"/usr/local/bin/python3".unixCmdGetStdOut
 ~port = 56494
-
+File.exists("/Volumes/data/Dokumenty/src/SC/OpenBCI-SuperCollider/python/openbci_wifi_osc.py")
 //add reporting on connected/disconnected
-
+File.exists("/Volumes/data/Dokumenty/src/brain/OpenBCI-SuperCollider/python/openbci_wifi_osc.py")
+"/Volumes/data/Dokumenty/src/SC/OpenBCI-SuperCollider/python/"
 ~pid =
 "export PATH=/usr/local/bin; python3 /Volumes/data/Dokumenty/src/brain/OpenBCI_Python/scripts/openbci_wifi_osc.py".unixCmdGetStdOut
 
-~pid = "/usr/local/bin/python3 /Volumes/data/Dokumenty/src/brain/OpenBCI_Python/scripts/openbci_wifi_osc.py".unixCmd
+~pid = "/usr/local/bin/python3 -u /Volumes/data/Dokumenty/src/SC/OpenBCI-SuperCollider/python/openbci_wifi_osc.py".unixCmd
 
-~pid = "python3 /Volumes/data/Dokumenty/src/brain/OpenBCI_Python/scripts/openbci_wifi_osc.py".runInTerminal
+~pid = "python3 /Volumes/data/Dokumenty/src/SC/OpenBCI-SuperCollider/python/openbci_wifi_osc.py".runInTerminal
 
-~pid = "python3 /Volumes/data/Dokumenty/src/brain/OpenBCI_Python/scripts/openbci_wifi_osc.py --address /obci2".runInTerminal
+~pid = "python3 /Volumes/data/Dokumenty/src/brain/OpenBCI_Python/scripts/openbci_wifi_osc.py --address /obci".runInTerminal
 
 ~pid
 pidRunning
 ("kill" + ~pid).unixCmd;
 
+thisProcess.platform.killAll("Python")
+thisProcess.platform.killProcessByID(~pid);
+
 "export PATH=/usr/local/bin; python3".unixCmd
 
-NetAddr("localhost", 51530).sendMsg('/connect', "10.45.0.113")
-NetAddr("localhost", 51530).sendMsg('/start_streaming')
-NetAddr("localhost", ~port).sendMsg('/stop_streaming'); NetAddr("localhost", 51530).sendMsg('/stop_streaming');
+NetAddr.langPort
+OpenBCI.allIPs
+
+(
+//get port etc
+~recv = OSCdef(\portRec, {|msg| msg.postln;~port = msg[1]}, '/obci/receivePort');
+~disc = OSCdef(\disc, {|msg| msg.postln}, '/obci/found');
+)
+
+OSCFunc.trace(true)
+OSCFunc.trace(false)
+NetAddr.langPort
+
+OpenBCI.
+a = IdentityDictionary()
+a[\ss] = 12323
+a.free
+a.removeAll
+a
+
+IdentityDictionary
+
+NetAddr("localhost", ~port).sendMsg('/connect', "10.45.0.115")
+NetAddr("localhost", ~port).sendMsg('/connect', "192.168.200.116") //home
+NetAddr("localhost", ~port).sendMsg('/connect', "192.168.1.4") //home
+NetAddr("localhost", ~port).sendMsg('/start_streaming')
+NetAddr("localhost", ~port).sendMsg('/stop_streaming');
+NetAddr("localhost", ~port).sendMsg('/quit')
+
+NetAddr("localhost", 51530).sendMsg('/stop_streaming');
 
 NetAddr("localhost", ~port).sendMsg('/receivePort')
 NetAddr("localhost", ~port).sendMsg('/quit')
@@ -64,7 +96,9 @@ NetAddr("localhost", ~port).sendMsg('/discover') //timeout, numAttempts
 NetAddr("localhost", ~port).sendMsg('/discover', 10, 10) //timeout, numAttempts
 NetAddr("localhost", ~port).sendMsg('/connect', "10.45.0.113")
 NetAddr("localhost", ~port).sendMsg('/connect', "OpenBCI-5381")
+NetAddr("localhost", ~port).sendMsg('/connect', "OpenBCI-536D")
 NetAddr("localhost", ~port).sendMsg('/connect', "10.45.0.138")
+NetAddr("localhost", ~port).sendMsg('/connect', "10.45.0.143")
 NetAddr("localhost", ~port).sendMsg('/connect', "10.45.0.113", 250, 20, 1000, 3, 5)
 NetAddr("localhost", ~port).sendMsg('/connect', "10.45.0.113", 250, 20, 1000, 3, 5)
 //def connect(unused_addr, addressOrName, sample_rate=None, max_packets_to_skip=20, latency=10000, timeout=3, attempts=5):
@@ -85,10 +119,16 @@ NetAddr("localhost", ~port).sendMsg('/send_command', "~4") //sampling rate: 1000
 
 NetAddr("localhost", ~port).sendMsg('/connect', "10.45.0.113"); NetAddr("localhost", ~port).sendMsg('/start_streaming')
 
+~vars[\events].eventDict['/obci/2_scope'].data[\plotter].scope.scope.lineWidth_(20000000)
+~vars[\events].eventDict['/obci/2_plot'].data[\plotter].scopeView.lineWidth_(30)
+~vars[\events].eventDict['/obci/2_scope'].data[\plotter].scope.synth.set(\inMul, 0)
+~vars[\events].eventDict['/obci/2_scope'].data[\plotter].scope.synth.set(\inMul, 0.001)
+~vars[\events].eventDict['/obci/2_scope'].data[\plotter].scope.synth.set(\impulseDiv, 2)
 "python3".runInTerminal
 
 // ~formatStr = {|val, numChars|
 // if(val.isKindOf(SimpleNumber), {
+LivePlotter
 
 ~genRec.free; ~genRec = OSCdef(\genRec, {|msg| "gen: ".post; msg.round(0.001).asString.padLeft(6).postln;}, '/obci');
 
@@ -115,6 +155,8 @@ b.connect
 b.stop
 b.start
 b.start(Bus.new(\control, 0, 12, s))
+
+FreqScope2
 
 ~buf = Buffer.alloc(s, 1, 12);
 b.start(~buf)
@@ -188,6 +230,8 @@ s.boot
 OpenBCI.runInTerminal = true
 
 b.bufnum
+s.
+firstInputChannel
 
 ~buf.bufnum
 ~buf.setn(0, [85, -0.1875, -0.1875, -0.1875, -0.1875, -0.1875, -0.1875, -0.1875, -0.1875, 0,0,0])
@@ -211,9 +255,13 @@ b.isStreaming
 b.stop
 b.start
 b.start(Bus.new(\control, 0, 12, s))
-
+Server.supernova
+s.options.numInputBusChannels = 8
 b.testDC
-
+p = SFPlayer().gui
+p = SFPlayer("/Volumes/JACK2017-18/2018.02\ JACK/run\ through/mixdown/180209_154435.wav").gui; //JACK stereo mixdown
+p.free
+s.scope
 
 
 ~buf = Buffer.alloc(s, 1, 12);
@@ -254,3 +302,21 @@ b.free
 
 OSCFunc.trace
 OSCFunc.trace(false)
+
+Server.supernova
+
+l = List()
+l.add("123")
+l.addAll([1, 2, "sdsds"])
+
+
+//----
+//udp
+"\xa0\x02\xfa\xc5n\xfa\xba\xd4\xfa\xael\xfa\xb4,\x9d\xd0\xd2\x94n\x90\x9b\x8d}\x98 \xb9\x00\x00\x00\x00\x00\x00\xc0\xa0\x03\xfa\xc5\xa3\xfa\xbb\x08\xfa\xae\xa3\xfa\xb4_\x9d\xd1\x14\x94n\xcf\x9b\x8d\xbe\x98 \xf6\x00\x00\x00\x00\x00\x00\xc0\xa0\x04\xfa\xc5s\xfa\xba\xd3\xfa\xaeo\xfa\xb4'\x9d\xd0\xe0\x94n\x99\x9b\x8d\x8d\x98 \xc0\x00\x00\x00\x00\x00\x00\xc0"
+//tcp
+'\xa0\x01\xfa\xcd\xc5\xfa\xc2\xc2\xfa\xba\x0e\xfa\xc1\x8f\xa0\x9c\x87\x976\xcf\x9e\x1dW\x9b\xbd\xbe\x00\x00\x00\x00\x00\x00\xc0\xa0\x02\xfa\xcd\n\xfa\xc2\x0b\xfa\xb9X\xfa\xc0\xdc\xa0\x9b\xd9\x976\x1e\x9e\x1c\xa9\x9b\xbd\x0e\x00\x00\x00\x00\x00\x00\xc0'
+
+~vars[\events].eventDict[\vbapSetup].data.add(\speakerArray -> [1,2,3])
+~vars[\events].eventDict[\vbap].data[\vbapSpeakerArray].numSpeakers
+~vars[\events].eventDict[\vbapSetup].data[\speakerArray]
+~vars[\events].eventDict[\vbap].isRunning
