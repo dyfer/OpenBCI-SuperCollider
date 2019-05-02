@@ -174,6 +174,7 @@ class ParseRaw(object):
             sample.packet_type = packet_type
         except BaseException as e:
             sample = OpenBCISample()
+            print("error")
             if hasattr(e, 'message'):
                 sample.error = e.message
             else:
