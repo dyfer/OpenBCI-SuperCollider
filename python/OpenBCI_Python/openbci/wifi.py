@@ -54,7 +54,7 @@ class OpenBCIWiFi(object):
 
     def __init__(self, ip_address=None, shield_name=None, sample_rate=None, log=True, timeout=3,
                  max_packets_to_skip=20, latency=10000, high_speed=True, ssdp_attempts=5,
-                 num_channels=8, shield_found_cb=None): #shield_found_cb overrides automatically connecting to the found shield; it is passed (ip_address, shield_name, device_description);
+                 num_channels=8, shield_found_cb=None, useTCP=True): #shield_found_cb overrides automatically connecting to the found shield; it is passed (ip_address, shield_name, device_description);
         # these one are used
         self.daisy = False
         self.high_speed = high_speed
@@ -70,6 +70,7 @@ class OpenBCIWiFi(object):
         self.streaming = False
         self.timeout = timeout
         self.in_discovery = False
+        self.useTCP = useTCP
 
         # might be handy to know API
         self.board_type = "none"
@@ -119,7 +120,7 @@ class OpenBCIWiFi(object):
         self.in_discovery = False
         self.local_ip_address = self._get_local_ip_address(ip_address)
         # Intentionally bind to port 0
-        self.local_wifi_server = WiFiShieldServer(self.local_ip_address, 0)
+        self.local_wifi_server = WiFiShieldServer(self.local_ip_address, 0, useTCP=self.useTCP)
         self.local_wifi_server_port = self.local_wifi_server.socket.getsockname()[1]
         if self.log:
             print("Opened socket on %s:%d" % (self.local_ip_address, self.local_wifi_server_port))
@@ -238,7 +239,15 @@ class OpenBCIWiFi(object):
             output_style = 'raw'
         else:
             output_style = 'json'
-        res_tcp_post = requests.post("http://%s/tcp" % self.ip_address,
+        if self.useTCP:
+            request_url = "http://%s/tcp"
+        else:
+            request_url = "http://%s/udp"
+
+        if not self.useTCP:
+            self.local_wifi_server.start_udp_handler()
+
+        res_tcp_post = requests.post(request_url % self.ip_address,
                           json={
                                 'ip': self.local_ip_address,
                                 'port': self.local_wifi_server_port,
@@ -246,13 +255,23 @@ class OpenBCIWiFi(object):
                                 'delimiter': True,
                                 'latency': self.latency
                                 })
+        # print(res_tcp_post)
         if res_tcp_post.status_code == 200:
-            tcp_status = res_tcp_post.json()
-            if tcp_status['connected']:
-                if self.log:
-                    print("WiFi Shield to Python TCP Socket Established")
-            else:
-                raise RuntimeWarning("WiFi Shield is not able to connect to local server. Please open an issue.")
+            try:
+                tcp_status = res_tcp_post.json()
+                if tcp_status['connected']:
+                    if self.log:
+                        if self.useTCP:
+                            print("WiFi Shield to Python TCP Socket Established")
+                        else:
+                            print("WiFi Shield to Python through UDP Established")
+                else:
+                    raise RuntimeWarning("WiFi Shield is not able to connect to local server. Please open an issue.")
+            except Exception as e:
+                print("error in processing response request: ", e)
+                print("response: ", res_tcp_post)
+                pass
+
 
     def init_streaming(self):
         """ Tell the board to record like crazy. """
@@ -276,24 +295,29 @@ class OpenBCIWiFi(object):
 
         def wifi_shield_found(response):
             res = requests.get(response.location, verify=False).text
+            # print("res:", res)
             device_description = xmltodict.parse(res)
-            cur_shield_name = str(device_description['root']['device']['serialNumber'])
-            cur_base_url = str(device_description['root']['URLBase'])
-            cur_ip_address = re.findall(r'[0-9]+(?:\.[0-9]+){3}', cur_base_url)[0]
-            list_id.append(cur_shield_name)
-            list_ip.append(cur_ip_address)
-            found_shield = True
-            print("Found WiFi Shield %s with IP Address %s" % (cur_shield_name, cur_ip_address))
-            if shield_name is None:
-                # print("Found WiFi Shield %s with IP Address %s" % (cur_shield_name, cur_ip_address))
-                if wifi_shield_cb is not None:
-                    print("Proceeding with WiFi Shield %s" % (cur_shield_name))
-                    wifi_shield_cb(cur_ip_address, cur_shield_name, device_description)
-            else:
-                if shield_name == cur_shield_name:
+            try:
+                cur_shield_name = str(device_description['root']['device']['serialNumber'])
+                cur_base_url = str(device_description['root']['URLBase'])
+                cur_ip_address = re.findall(r'[0-9]+(?:\.[0-9]+){3}', cur_base_url)[0]
+                list_id.append(cur_shield_name)
+                list_ip.append(cur_ip_address)
+                found_shield = True
+                print("Found WiFi Shield %s with IP Address %s" % (cur_shield_name, cur_ip_address))
+                if shield_name is None:
+                    # print("Found WiFi Shield %s with IP Address %s" % (cur_shield_name, cur_ip_address))
                     if wifi_shield_cb is not None:
-                        print("Proceeding with WiFi Shield %s" % (cur_shield_name))
+                        # print("Proceeding with WiFi Shield %s" % (cur_shield_name))
                         wifi_shield_cb(cur_ip_address, cur_shield_name, device_description)
+                else:
+                    if shield_name == cur_shield_name:
+                        if wifi_shield_cb is not None:
+                            # print("Proceeding with WiFi Shield %s" % (cur_shield_name))
+                            wifi_shield_cb(cur_ip_address, cur_shield_name, device_description)
+            except Exception as e:
+                print("exception in discovery")
+                pass
 
         ssdp_hits = ssdp.discover("urn:schemas-upnp-org:device:Basic:1", timeout=self.timeout, wifi_found_cb=wifi_shield_found, all_ip_addresses=self.local_ip_addresses) # send multicast on all local interfaces
         # ssdp_hits = ssdp.discover("urn:schemas-upnp-org:device:Basic:1", timeout=self.timeout, wifi_found_cb=wifi_shield_found)
@@ -547,7 +571,7 @@ class OpenBCIWiFi(object):
 
 class WiFiShieldHandler(asyncore.dispatcher_with_send):
     def __init__(self, sock, callback=None, high_speed=True,
-                 parser=None, daisy=False):
+                 parser=None, daisy=False, useTCP=True):
         asyncore.dispatcher_with_send.__init__(self, sock)
 
         self.callback = callback
@@ -555,15 +579,32 @@ class WiFiShieldHandler(asyncore.dispatcher_with_send):
         self.high_speed = high_speed
         self.last_odd_sample = OpenBCISample()
         self.parser = parser if parser is not None else ParseRaw(gains=[24, 24, 24, 24, 24, 24, 24, 24])
+        self.useTCP = useTCP
+
+    def handle_write(self):
+        if self.useTCP:
+            self.initiate_send()
+        else:
+            pass
+
+    def writable(self):
+        if not self.useTCP:
+            return False # don't want write notifies - otherwise cpu usage goes high
 
     def handle_read(self):
-        data = self.recv(3000)  # 3000 is the max data the WiFi shield is allowed to send over TCP
+        if self.useTCP:
+            data = self.recv(3000)  # 3000 is the max data the WiFi shield is allowed to send over TCP
+        else:
+            # data = self.recvfrom(3000) #not available in asyncore
+            data = self.recv(3000) # doesn't provide address where the data comes from
+        # print(data)
         if len(data) > 2:
             if self.high_speed:
                 packets = int(len(data)/33)
                 raw_data_packets = []
                 for i in range(packets):
                     raw_data_packets.append(bytearray(data[i * k.RAW_PACKET_SIZE: i * k.RAW_PACKET_SIZE + k.RAW_PACKET_SIZE]))
+                    # print(bytearray(data[i * k.RAW_PACKET_SIZE: i * k.RAW_PACKET_SIZE + k.RAW_PACKET_SIZE]))
                 samples = self.parser.transform_raw_data_packets_to_sample(raw_data_packets=raw_data_packets)
 
                 for sample in samples:
@@ -607,17 +648,33 @@ class WiFiShieldHandler(asyncore.dispatcher_with_send):
 
 class WiFiShieldServer(asyncore.dispatcher):
 
-    def __init__(self, host, port, callback=None, gains=None, high_speed=True, daisy=False):
+    def __init__(self, host, port, callback=None, gains=None, high_speed=True, daisy=False, useTCP=True):
         asyncore.dispatcher.__init__(self)
-        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.set_reuse_addr()
+        self.useTCP = useTCP
+        print("useTCP:", self.useTCP)
+        if self.useTCP:
+            socket_type = socket.SOCK_STREAM
+        else:
+            socket_type = socket.SOCK_DGRAM
+        self.create_socket(socket.AF_INET, socket_type)
         self.bind((host, port))
+        self.set_reuse_addr()
         self.daisy = daisy
-        self.listen(5)
+        if self.useTCP:
+            self.listen(5)
         self.callback = None
         self.handler = None
         self.parser = ParseRaw(gains=gains)
         self.high_speed = high_speed
+        # print("socket: ", self.socket)
+        print("WiFiShieldServer ready")
+
+    def start_udp_handler(self):
+        if not self.useTCP:
+            self.handler = WiFiShieldHandler(self.socket, self.callback, high_speed=self.high_speed, parser=self.parser, daisy=self.daisy, useTCP=self.useTCP)
+            print("UDP handler started")
+        else:
+            print("udp handler only allower it using UDP ")
 
     def handle_accept(self):
         pair = self.accept()
@@ -625,7 +682,7 @@ class WiFiShieldServer(asyncore.dispatcher):
             sock, addr = pair
             print('Incoming connection from %s' % repr(addr))
             self.handler = WiFiShieldHandler(sock, self.callback, high_speed=self.high_speed,
-                                             parser=self.parser, daisy=self.daisy)
+                                             parser=self.parser, daisy=self.daisy, useTCP=self.useTCP)
 
     def set_callback(self, callback):
         self.callback = callback
@@ -642,3 +699,7 @@ class WiFiShieldServer(asyncore.dispatcher):
 
     def set_parser(self, parser):
         self.parser = parser
+
+    # def writable(self):
+        # if not self.useTCP:
+            # return False # don't want write notifies
