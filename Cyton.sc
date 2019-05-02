@@ -12,6 +12,20 @@
 Cyton : OpenBCI {
 	classvar <numChannels= 8;
 
+	*sampleRateToID {|rate = 250|
+		var id = rate.switch(
+			250, 6,
+			500, 5,
+			1000, 4,
+			2000, 3,
+			4000, 2,
+			8000, 1,
+			16000, 0,
+			nil);
+		id ?? {"Invalid sample rate. The valid rates (Hz) are 250, 500, 1000, 2000, 4000, 8000, 16000".warn};
+		^id
+	}
+
 	//--commands
 	testGnd {  //Connect to internal GND (VDD - VSS)
 		this.put($0);
@@ -112,26 +126,21 @@ Cyton : OpenBCI {
 		this.putAll("~"++rate.clip(0, 6));
 		if(wifi, {
 			if((rate<4), {
-				"The Cyton with WiFi shield cannot stream data over 1000SPS".warn;
+				"The Cyton with WiFi shield cannot stream data over 1000Hz".warn;
+			});
+			if((rate<5), {
+				"Supercollider cannot receive data over 500Hz".warn;
 			});
 		}, {
 			if((rate<6), {
-				"The Cyton with USB Dongle cannot and will not stream data over 250SPS".warn;
+				"The Cyton with USB Dongle cannot and will not stream data over 250Hz".warn;
 			});
 		})
 	}
+
 	setSampleRateHz {|rate= 250|  //set sample rate
 		var rateInt;
-		rate.switch(
-			250, {rateInt = 6},
-			500, {rateInt = 5},
-			1000, {rateInt = 4},
-			2000, {rateInt = 3},
-			4000, {rateInt = 2},
-			8000, {rateInt = 1},
-			16000, {rateInt = 0},
-			{"Invalid sample rate. The valid rates (Hz) are 250, 500, 1000, 2000, 4000, 8000, 16000".warn}
-		);
+		rateInt = Cyton.sampleRateToID(rate);
 		rateInt !? {this.setSampleRate(rateInt)};
 	}
 

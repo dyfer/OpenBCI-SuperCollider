@@ -7,12 +7,15 @@
 OpenBCI {
 	var <port, task;
 	var <>dataAction, <>replyAction, <>initAction;  //callback functions
+	var <latency; //for wifi: if latency > 0, Python will send messages with timestamp offset by latency to ensure timely processing by the server; this is necessary to avoid senting multiple messages within control period!
 	var <>accelAction;  //more callback functions
 	var <>data, <>accel;  //latest readings (can be nil)
 	var <name, <ip, <responders, <pid, <cmd, <pythonNetAddr;
 	var <wifi=false, <pythonPort, <thisOscPrefix, <thisOscPath;
 	var msgList;
 	var <isConnected = false, <isStreaming = false;
+	var <>postMessages = true;
+	var freeFunc;
 
 	classvar <allIPs, <pythonPath = "python3", <pythonFound = false;
 	classvar <>globalOscPrefix = "";
@@ -23,7 +26,7 @@ OpenBCI {
 
 	*initClass {
 		allIPs = IdentityDictionary();
-		scriptPath = (File.realpath(this.class.filenameSymbol).dirname.withTrailingSlash ++ "python/openbci_wifi_osc.py").escapeChar($ );
+		scriptPath = thisProcess.platform.formatPathForCmdLine(File.realpath(this.class.filenameSymbol).dirname.withTrailingSlash ++ "python/openbci_wifi_osc.py");
 	}
 
 	*new {|port, baudrate= 115200, dataAction, replyAction, initAction|
@@ -33,12 +36,12 @@ OpenBCI {
 	//name (unique) is required, IP is optional (can be inferred using service discovery)
 	//wifi shield name will be taken from name, unless specified later
 
-	*wifi {|name, dataAction, replyAction, initAction|
-		^super.new.initOpenBCIwifi(name, dataAction, replyAction, initAction);
+	*wifi {|name, dataAction, replyAction, initAction, latency = 0.05|
+		^super.new.initOpenBCIwifi(name, dataAction, replyAction, initAction, latency);
 	}
 
 	//helpers
-	*startDiscovery {
+	*startDiscovery {|onDoneAction = ({})|
 		var cmd;
 		// allIPs ?? {allIPs = IdentityDictionary()};
 		discoveryResp = OSCFunc({|msg|
@@ -48,22 +51,48 @@ OpenBCI {
 			if(allIPs[thisName].isNil, {
 				allIPs[thisName.asSymbol] = thisIP;
 				format("Found new WiFi shield % at %", thisName, thisIP).postln;
+				format("Total number of WiFi shields found: %", allIPs.size).postln;
 			})
 		}, discoveryAddr ++ '/found');
 		"PATH".setenv("PATH".getenv++":/usr/local/bin");//for homebrew on macos
-		cmd = pythonPath + scriptPath + "--host localhost" + "--port" + NetAddr.langPort + "--address" + discoveryAddr + "--discover";
+		// cmd = pythonPath + scriptPath + "--host localhost" + "--port" + NetAddr.langPort + "--address" + discoveryAddr + "--discover";
+		// cmd = pythonPath + "-u" + scriptPath + "--host localhost" + "--port" + NetAddr.langPort + "--address" + discoveryAddr + "--discover";
+		cmd = format("% -u  % --host localhost --port % --address % --discover", pythonPath, scriptPath, NetAddr.langPort, discoveryAddr);
 		"cmd: ".post; cmd.postln;
 		discoveryPid = cmd.unixCmd({
 			discoveryResp.free;
 			discoveryPid = nil;
 			"Discovery finised. ".postln;
 			"allIPs: ".post; allIPs.postln;
+			format("Total number of WiFi shields found: %", allIPs.size).postln;
+			onDoneAction.();
 		}); //no auto free - in case we want to restart it? but maybe responders should be tied to it?
 		"Discovery started... ".postln;
 	}
 
 	*stopDiscovery { //call this with a timer from discoverWiFi?
 		discoveryPid !? {("kill" + discoveryPid).unixCmd};
+	}
+
+	*saveAllIPs {|path|
+		if(allIPs.notNil, {
+			format("Saving name/IP dictionary to %", path).postln;
+			allIPs.writeArchive(path)
+		});
+	}
+
+	*clearAllIPs {
+		allIPs = IdentityDictionary();
+	}
+
+	*loadAllIPs {|path|
+		if(File.exists(path), {
+			var obj = Object.readArchive(path);
+			format("Loading name/IP dictionary from %...", path).post;
+			if(obj.isKindOf(IdentityDictionary), {allIPs = obj; " success".postln}, {" failed".postln});
+			"allIPs :".postln; allIPs.postln;
+			format("Total number of IPs: %", allIPs.size).postln;
+		});
 	}
 
 	findPython {
@@ -108,9 +137,13 @@ OpenBCI {
 
 		//--read loop
 		task= Routine({this.prTask}).play(SystemClock);
+
+		//--free on shutdown
+		freeFunc = {this.free};
+		ShutDown.add(freeFunc);
 	}
 
-	initOpenBCIwifi {|argName, argDataAction, argReplyAction, argInitAction|
+	initOpenBCIwifi {|argName, argDataAction, argReplyAction, argInitAction, argLatency|
 		wifi = true;
 		msgList = List();
 		if(pythonFound.not, {this.findPython});
@@ -127,19 +160,23 @@ OpenBCI {
 		thisOscPrefix = globalOscPrefix;
 		thisOscPath = thisOscPrefix ++ "/" ++ name;
 
+		//latency
+		latency = argLatency;
 
 		//--startup
 		this.startPython;
 
-		//--read loop
-
+		//--free on shutdown
+		freeFunc = {this.free};
+		ShutDown.add(freeFunc);
 	}
 
 	startPython {
 		this.startResponders;
-		cmd = pythonPath + scriptPath + "--host localhost" + "--port" + NetAddr.langPort + "--address" + thisOscPath;
-		// "cmd: ".post; cmd.postln;
-		if(runInTerminal, {
+		// cmd = pythonPath + scriptPath + "--host localhost" + "--port" + NetAddr.langPort + "--address" + thisOscPath;
+		cmd = format("% -u  % --host localhost --port % --address % --latency %", pythonPath, scriptPath, NetAddr.langPort, thisOscPath, latency);
+		"cmd: ".post; cmd.postln;
+		if(runInTerminal, { //on macos
 			try {
 				cmd.runInTerminal;
 				// runInTerminalSucceeded = true;
@@ -175,6 +212,14 @@ OpenBCI {
 				format("%: streaming %", name, isStreaming.if({"started"}, {"stopped"})).postln;
 			}, thisOscPath ++ '/streaming'),
 
+			OSCFunc({|msg|
+				var message = msg[1..];
+				this.changed(\message, message);
+				if(postMessages, {
+					format("%:", name).scatArgs(*message).postln;
+				});
+			}, thisOscPath ++ '/message'),
+
 			OSCFunc({|msg| dataAction.(msg[1..])}, thisOscPath),
 		]
 	}
@@ -187,9 +232,13 @@ OpenBCI {
 
 	close {
 		this.stop;
+		// "OpenBCI: running close function".warn;
+		ShutDown.remove(freeFunc);
 		if(wifi, {
+			"OpenBCI: shutting down Python bridge".postln;
 			if(pid.notNil, {
-				("kill" + pid).unixCmd;
+				// ("kill" + pid).unixCmd;
+				thisProcess.platform.killProcessByID(pid);
 			}, {
 				this.sendMsg('/quit');
 			});
@@ -206,7 +255,7 @@ OpenBCI {
 
 	put {|byte|
 		if(wifi, {
-			this.sendMsg('/send_command', byte.asString)
+			this.sendMsg('/send_command', byte.asString) //this needs fixing for sending multiple msgs
 		}, {
 			port.put(byte)
 		})
@@ -300,10 +349,11 @@ OpenBCI {
 		this.put($j);
 	}
 
-	connect {|argIP| //ip is optional - provide if service discovery not desired
+	connect {|argIP, sampleRate = 0, maxPacketsToSkip=20, latency=10000, timeout=3, attempts=5, useTCP=true| //ip is optional - provide if service discovery not desired
 		if(wifi, {
 			ip = argIP ? this.getIPfromName(name);
-			this.sendMsg('/connect', ip ? name);
+			// sampleRate ?? {sampleRate == 250};
+			this.sendMsg('/connect', ip ? name, sampleRate, maxPacketsToSkip, latency, timeout, attempts, useTCP);
 			format("connecting to %...", name).postln;
 		}, {
 			".connect method is used only in wifi mode!".warn;
