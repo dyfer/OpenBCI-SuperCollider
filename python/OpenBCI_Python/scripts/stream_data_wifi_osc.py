@@ -21,7 +21,7 @@ def sendData(sample):
 
 if __name__ == '__main__':
     # shield_name = 'OpenBCI-W222'
-    shield_name = 'OpenBCI-5381'
+    shield_name = 'OpenBCI-536D'
     # shield_name = None
     logging.basicConfig(filename="test.log",format='%(asctime)s - %(levelname)s : %(message)s',level=logging.DEBUG)
     logging.info('---------LOG START-------------')
